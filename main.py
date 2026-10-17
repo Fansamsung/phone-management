@@ -40,7 +40,47 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Session state
+# --- 🔒 LOGIN VA XAVFSIZLIK TIZIMI ---
+# Tizimga kirish uchun login va parol (O'zingizga moslab o'zgartirishingiz mumkin)
+USERS = {
+    "Abbos": "111",
+    "azizbek": "7777"
+}
+
+if "logged_in" not in st.session_state:
+  st.session_state.logged_in = False
+
+def login_page():
+  st.markdown("<br><br>", unsafe_allow_html=True)
+  col1, col2, col3 = st.columns([1, 2, 1])
+  with col2:
+    st.markdown(
+        """
+        <div style="background-color: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); text-align: center;">
+            <h2>🔐 Tizimga Kirish</h2>
+            <p style="color: #64748b;">Dasturdan foydalanish uchun login va parolingizni kiriting</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown("<br>", unsafe_allow_html=True)
+    username = st.text_input("👤 Login", key="login_user")
+    password = st.text_input("🔑 Parol", type="password", key="login_pass")
+
+    if st.button("🚀 KIRISH", use_container_width=True, type="primary"):
+      if username in USERS and USERS[username] == password:
+        st.session_state.logged_in = True
+        st.session_state.user_name = username
+        st.success("✅ Muvaffaqiyatli kirdingiz!")
+        st.rerun()
+      else:
+        st.error("❌ Login yoki parol noto'g'ri!")
+
+if not st.session_state.logged_in:
+  login_page()
+  st.stop()  # Login qilmagan bo'lsa, pastdagi dastur kodlarini yurgizmaydi
+
+# --- Session state ---
 if "kirim_savatcha" not in st.session_state:
   st.session_state.kirim_savatcha = []
 if "oxirgi_qoshilgan" not in st.session_state:
@@ -123,7 +163,7 @@ cursor.execute("""
     )
 """)
 
-# 5. Partiya xarajatlari jadvali (Tannarx hisoblash uchun)
+# 5. Partiya xarajatlari jadvali
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS partiya_xarajatlari (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -138,6 +178,12 @@ conn.commit()
 
 # --- CHAP TOMONDAGI BOSHQARUV PANEL (SIDEBAR) ---
 st.sidebar.title("🎛️ Boshqaruv Paneli")
+st.sidebar.markdown(f"👤 Foydalanuvchi: **{st.session_state.user_name}**")
+
+if st.sidebar.button("🚪 Tizimdan Chiqish (Logout)"):
+  st.session_state.logged_in = False
+  st.rerun()
+
 st.sidebar.markdown("---")
 
 menu = st.sidebar.radio(
@@ -389,7 +435,6 @@ if menu == "➕ Optom / Dona Kirim Qilish":
       ):
         sana = datetime.now().strftime("%Y-%m-%d %H:%M")
         for item in st.session_state.kirim_savatcha:
-          # Boshlang'ich tannarx olingan narxga teng deb saqlanadi
           cursor.execute(
               """
                         INSERT INTO partiyalar (sana, taminotchi, model, xotira, rang, grade, boshlangich_soni, olingan_narx, tannarx)
@@ -452,14 +497,9 @@ if menu == "➕ Optom / Dona Kirim Qilish":
         st.session_state.oxirgi_qoshilgan = None
         st.rerun()
 
-# --- 2. PARTIYALAR TANNARXINI HISOBLASH (YANGI BO'LIM) ---
+# --- 2. PARTIYALAR TANNARXINI HISOBLASH ---
 elif menu == "💰 Partiyalar Tannarxini Hisoblash":
   st.header("🛠️ Partiyaga Qo'shimcha Xarajatlar Qo'shish va Tannarx Chiqarish")
-  st.info(
-      "Bu bo'limda olingan partiyaga ketgan **Remont, Karobka, Dostavka,"
-      " Soliq** va boshqa xarajatlarni kiritib, 1 dona telefonning **Aniq"
-      " Tannarxini** chiqarishingiz mumkin."
-  )
 
   df_partiyalar = pd.read_sql("SELECT * FROM partiyalar", conn)
 
@@ -473,7 +513,6 @@ elif menu == "💰 Partiyalar Tannarxini Hisoblash":
 
     p_row = df_partiyalar[df_partiyalar["id"] == partiya_id_selected].iloc[0]
 
-    # Partiya haqida umumiy ma'lumot
     soni = p_row["boshlangich_soni"]
     olingan_narx = p_row["olingan_narx"]
     xotira = p_row["xotira"] if p_row["xotira"] else ""
@@ -557,7 +596,6 @@ elif menu == "💰 Partiyalar Tannarxini Hisoblash":
           st.success("✅ Xarajat o'chirildi!")
           st.rerun()
 
-    # TANNARXNI REAL-TIME HISOBLASH
     st.markdown("---")
     st.subheader("📊 TANNARX HISOB-KITOBI XULOSASI:")
 
@@ -571,7 +609,6 @@ elif menu == "💰 Partiyalar Tannarxini Hisoblash":
         else:
           har_bir_dona_xarajat += row_x["summa"]
 
-    # 1 dona telefon uchun jami qo'shimcha xarajat
     dona_qoshimcha = (
         jami_partiya_xarajat / soni if soni > 0 else 0
     ) + har_bir_dona_xarajat
@@ -623,10 +660,6 @@ elif menu == "💰 Partiyalar Tannarxini Hisoblash":
 # --- 3. KIRIMLARNI BOSHQARISH ---
 elif menu == "✏️ Kirimlarni Boshqarish (O'chirish)":
   st.header("📋 Kirim qilingan partiyalar va ularning summalari")
-  st.warning(
-      "Agar sonini yoki narxini adashib noto'g'ri kiritgan bo'lsangiz, o'sha"
-      " partiyani o'chirib, qaytadan to'g'ri kiritishingiz mumkin."
-  )
 
   df_partiya = pd.read_sql("SELECT * FROM partiyalar", conn)
 
