@@ -1,54 +1,67 @@
 from datetime import datetime
 import sqlite3
 import pandas as pd
+import plotly.express as px
 import streamlit as st
 
 # Sahifa sozlamalari
 st.set_page_config(
-    page_title="Optom va Donabay Telefon Savdosi",
+    page_title="ERP | Optom va Donabay Telefon Savdosi",
     page_icon="📱",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# 🎨 MAXSUS CHIROYLI DIZAYN (CSS STILLAR)
+# 🎨 ZAMONAVIY PREMIUM WEB UI STILI (CSS)
 st.markdown(
     """
     <style>
     .stApp {
-        background-color: #f8f9fa;
+        background-color: #f4f6f9;
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+    .metric-card {
+        background: #ffffff;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+        border: 1px solid rgba(226, 232, 240, 0.8);
+    }
+    .main-header {
+        font-size: 26px;
+        font-weight: 700;
+        color: #0f172a;
+        margin-bottom: 20px;
+    }
+    div[data-testid="stMetricValue"] {
+        font-size: 26px !important;
+        font-weight: 800 !important;
+        color: #2563eb !important;
+    }
+    .stButton>button {
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        padding: 8px 16px !important;
     }
     .item-card {
         background-color: #ffffff;
-        border: 1px solid #e9ecef;
-        border-radius: 10px;
-        padding: 15px;
-        margin-bottom: 12px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-    }
-    div[data-testid="stMetricValue"] {
-        font-size: 28px !important;
-        font-weight: bold;
-        color: #1e3a8a !important;
-    }
-    .stButton>button {
-        font-weight: bold;
+        border-left: 4px solid #2563eb;
         border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
     }
     </style>
 """,
     unsafe_allow_html=True,
 )
 
-# --- 🔒 LOGIN VA XAVFSIZLIK TIZIMI ---
-# Tizimga kirish uchun login va parol (O'zingizga moslab o'zgartirishingiz mumkin)
-USERS = {
-    "Abbos": "111",
-    "azizbek": "7777"
-}
+# --- 🔒 LOGIN TIZIMI ---
+USERS = {"admin": "12345", "azizbek": "7777"}
 
 if "logged_in" not in st.session_state:
   st.session_state.logged_in = False
+
 
 def login_page():
   st.markdown("<br><br>", unsafe_allow_html=True)
@@ -56,9 +69,9 @@ def login_page():
   with col2:
     st.markdown(
         """
-        <div style="background-color: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); text-align: center;">
-            <h2>🔐 Tizimga Kirish</h2>
-            <p style="color: #64748b;">Dasturdan foydalanish uchun login va parolingizni kiriting</p>
+        <div style="background-color: white; padding: 40px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); text-align: center;">
+            <h2 style="color: #0f172a; margin-bottom: 8px;">🔐 Tizimga Kirish</h2>
+            <p style="color: #64748b; font-size: 14px;">Optom va Donabay Telefon Savdosi ERP Tizimi</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -71,16 +84,17 @@ def login_page():
       if username in USERS and USERS[username] == password:
         st.session_state.logged_in = True
         st.session_state.user_name = username
-        st.success("✅ Muvaffaqiyatli kirdingiz!")
+        st.toast("✅ DONE! Tizimga muvaffaqiyatli kirdingiz.", icon="🎉")
         st.rerun()
       else:
         st.error("❌ Login yoki parol noto'g'ri!")
 
+
 if not st.session_state.logged_in:
   login_page()
-  st.stop()  # Login qilmagan bo'lsa, pastdagi dastur kodlarini yurgizmaydi
+  st.stop()
 
-# --- Session state ---
+# Session State
 if "kirim_savatcha" not in st.session_state:
   st.session_state.kirim_savatcha = []
 if "oxirgi_qoshilgan" not in st.session_state:
@@ -90,7 +104,7 @@ if "oxirgi_qoshilgan" not in st.session_state:
 conn = sqlite3.connect("telefon_biznes.db", check_same_thread=False)
 cursor = conn.cursor()
 
-# 1. Partiyalar jadvali
+# Jadvallar
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS partiyalar (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -106,7 +120,6 @@ cursor.execute("""
     )
 """)
 
-# Migration
 for col_name in ["taminotchi", "rang", "grade"]:
   try:
     cursor.execute(f"ALTER TABLE partiyalar ADD COLUMN {col_name} TEXT")
@@ -119,7 +132,6 @@ for col_name in ["olingan_narx", "tannarx"]:
   except sqlite3.OperationalError:
     pass
 
-# 2. IMEI bazasi jadvali
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS imei_baza (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -133,7 +145,6 @@ cursor.execute("""
     )
 """)
 
-# 3. Sotuvlar tarixi jadvali
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS sotuvlar (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -143,6 +154,8 @@ cursor.execute("""
         mijoz_ismi TEXT,
         sotilgan_soni INTEGER,
         sotuv_narx_dona REAL,
+        cargo_dona REAL DEFAULT 0.0,
+        sotuv_perevod_foiz REAL DEFAULT 0.0,
         umumiy_narx REAL,
         tolov_turi TEXT,
         tolangan_summa REAL,
@@ -151,7 +164,15 @@ cursor.execute("""
     )
 """)
 
-# 4. Qarz to'lovlari jadvali
+for col, col_type in [
+    ("cargo_dona", "REAL DEFAULT 0.0"),
+    ("sotuv_perevod_foiz", "REAL DEFAULT 0.0"),
+]:
+  try:
+    cursor.execute(f"ALTER TABLE sotuvlar ADD COLUMN {col} {col_type}")
+  except sqlite3.OperationalError:
+    pass
+
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS qarz_tolovlari (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -163,7 +184,6 @@ cursor.execute("""
     )
 """)
 
-# 5. Partiya xarajatlari jadvali
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS partiya_xarajatlari (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -176,48 +196,232 @@ cursor.execute("""
 """)
 conn.commit()
 
-# --- CHAP TOMONDAGI BOSHQARUV PANEL (SIDEBAR) ---
-st.sidebar.title("🎛️ Boshqaruv Paneli")
-st.sidebar.markdown(f"👤 Foydalanuvchi: **{st.session_state.user_name}**")
-
-if st.sidebar.button("🚪 Tizimdan Chiqish (Logout)"):
-  st.session_state.logged_in = False
-  st.rerun()
+# --- SIDEBAR NAVIGATSIYA ---
+st.sidebar.markdown(
+    f"""
+    <div style="text-align: center; padding: 10px 0;">
+        <h3 style="margin:0; color:#1e293b;">📱 TELEFON ERP</h3>
+        <span style="font-size:12px; color:#64748b;">Foydalanuvchi: <b>{st.session_state.user_name}</b></span>
+    </div>
+""",
+    unsafe_allow_html=True,
+)
 
 st.sidebar.markdown("---")
 
 menu = st.sidebar.radio(
-    "Bo'limni tanlang:",
+    "Bo'limlar:",
     [
+        "📊 Dashboard va Analytics",
+        "📦 Ombor Qoldiqlari",
         "➕ Optom / Dona Kirim Qilish",
         "💰 Partiyalar Tannarxini Hisoblash",
         "✏️ Kirimlarni Boshqarish (O'chirish)",
-        "📥 IMEI Excel / Qo'lda Kiritish yoki Yangilash",
+        "📥 IMEI Excel / Qo'lda Kiritish",
         "🛒 Sotuv Qilish (Dona / Optom)",
-        "🔍 IMEI Tekshirish va Sotilganlar Ro'yxati",
+        "🔍 IMEI va IMEIsiz Qaytarib Olish (Vozvrat)",
         "👥 Nasiyalar va Qarz To'lovlari",
-        "📊 Savdo Tarixi va Foyda",
+        "📜 Savdo Tarixi va Hisobot",
     ],
 )
 
 st.sidebar.markdown("---")
-st.sidebar.info("💡 Dastur: Telefon Savdosi va IMEI Nazorati")
+if st.sidebar.button("🚪 Tizimdan Chiqish", use_container_width=True):
+  st.session_state.logged_in = False
+  st.toast("👋 Tizimdan chiqildi.", icon="ℹ️")
+  st.rerun()
 
-st.title("📱 Ulgurji va Donabay Telefon Savdosi Dasturi")
-st.markdown("---")
+# --- 1. DASHBOARD VA VIZUAL ANALYTICS ---
+if menu == "📊 Dashboard va Analytics":
+  st.markdown(
+      "<h1 class='main-header'>📊 Boshqaruv Paneli va Statistik Analytics</h1>",
+      unsafe_allow_html=True,
+  )
 
-# --- 1. OPTOM / DONA KIRIM QILISH ---
-if menu == "➕ Optom / Dona Kirim Qilish":
-  st.header("📦 Bir ta'minotchidan yuk kirim qilish")
+  df_sotuv = pd.read_sql("SELECT * FROM sotuvlar", conn)
+  df_ombor = pd.read_sql(
+      "SELECT i.*, p.tannarx, p.olingan_narx FROM imei_baza i JOIN partiyalar p"
+      " ON i.partiya_id = p.id WHERE i.status = 'Omborda'",
+      conn,
+  )
 
-  with st.container():
-    taminotchi = st.text_input(
-        "👤 Ta'minotchi / Kimdan olingan (masalan: Ali Dubai / Market 77)",
-        key="taminotchi_input",
-    )
+  jami_savdo = df_sotuv["umumiy_narx"].sum() if not df_sotuv.empty else 0.0
+  jami_foyda = df_sotuv["umumiy_foyda"].sum() if not df_sotuv.empty else 0.0
+  jami_qarz = df_sotuv["qarz_summasi"].sum() if not df_sotuv.empty else 0.0
+
+  df_ombor["tannarx"] = df_ombor["tannarx"].fillna(df_ombor["olingan_narx"])
+  ombor_sarmoya = df_ombor["tannarx"].sum() if not df_ombor.empty else 0.0
+
+  c1, c2, c3, c4 = st.columns(4)
+  c1.metric("💰 Jami Savdo Tushumi", f"${jami_savdo:,.2f}")
+  c2.metric("📈 Sof Foyda", f"${jami_foyda:,.2f}")
+  c3.metric("⚠️ Undirilmagan Qarzlar", f"${jami_qarz:,.2f}")
+  c4.metric("📦 Ombordagi Sarmoya", f"${ombor_sarmoya:,.2f}")
 
   st.markdown("---")
-  st.subheader("➕ Yangi Model Qo'shish Formasi")
+
+  if not df_sotuv.empty:
+    col_chart1, col_chart2 = st.columns(2)
+
+    with col_chart1:
+      st.subheader("🔥 Eng Ko'p Sotilgan Modellar Top-10")
+      top_models = (
+          df_sotuv.groupby("model")["sotilgan_soni"]
+          .sum()
+          .reset_index()
+          .sort_values(by="sotilgan_soni", ascending=False)
+          .head(10)
+      )
+      fig_top = px.bar(
+          top_models,
+          x="sotilgan_soni",
+          y="model",
+          orientation="h",
+          color="sotilgan_soni",
+          color_continuous_scale="Blues",
+          labels={
+              "sotilgan_soni": "Sotilgan Soni (ta)",
+              "model": "Telefon Modeli",
+          },
+      )
+      fig_top.update_layout(
+          yaxis={"categoryorder": "total ascending"}, showlegend=False
+      )
+      st.plotly_chart(fig_top, use_container_width=True)
+
+    with col_chart2:
+      st.subheader("💳 To'lov Turlari Bo'yicha Ulush")
+      pay_chart = (
+          df_sotuv.groupby("tolov_turi")["umumiy_narx"].sum().reset_index()
+      )
+      fig_pay = px.pie(
+          pay_chart,
+          values="umumiy_narx",
+          names="tolov_turi",
+          hole=0.4,
+          color_discrete_sequence=px.colors.qualitative.Pastel,
+      )
+      st.plotly_chart(fig_pay, use_container_width=True)
+
+    st.markdown("---")
+    st.subheader("📈 Vaqt Bo'yicha Savdo Va Sof Foyda Dinamikasi")
+
+    df_sotuv["sana_dt"] = pd.to_datetime(df_sotuv["sana"]).dt.date
+    daily_sales = (
+        df_sotuv.groupby("sana_dt")[["umumiy_narx", "umumiy_foyda"]]
+        .sum()
+        .reset_index()
+    )
+
+    fig_line = px.line(
+        daily_sales,
+        x="sana_dt",
+        y=["umumiy_narx", "umumiy_foyda"],
+        labels={"value": "Summa ($)", "sana_dt": "Sana", "variable": "Ko'rsatkich"},
+        markers=True,
+    )
+    st.plotly_chart(fig_line, use_container_width=True)
+
+# --- 2. OMBOR QOLDIQLARI ---
+elif menu == "📦 Ombor Qoldiqlari":
+  st.header("📦 Ombordagi Mahsulotlar Qoldig'i va Narxlari")
+
+  query_ombor_full = """
+        SELECT i.id, i.partiya_id, i.model, i.imei1, i.imei2, p.xotira, p.rang, p.grade, p.boshlangich_soni, p.olingan_narx, p.tannarx, p.taminotchi, p.sana
+        FROM imei_baza i
+        JOIN partiyalar p ON i.partiya_id = p.id
+        WHERE i.status = 'Omborda'
+    """
+  df_ombor = pd.read_sql(query_ombor_full, conn)
+
+  if df_ombor.empty:
+    st.warning("📂 Hozirda ombor bo'sh!")
+  else:
+    df_ombor["tannarx"] = df_ombor["tannarx"].fillna(df_ombor["olingan_narx"])
+
+    m_c1, m_c2, m_c3 = st.columns(3)
+    m_c1.metric("📱 Ombordagi Jami Telefonlar", f"{len(df_ombor)} ta")
+    m_c2.metric(
+        "💵 Ombordagi Jami Tovar Qiymati", f"${df_ombor['tannarx'].sum():,.2f}"
+    )
+    m_c3.metric("🏷️ Turli Modellar Soni", f"{df_ombor['model'].nunique()} xil")
+
+    st.markdown("---")
+
+    search_qoldiq = st.text_input(
+        "🔎 Model bo'yicha tezkor qidiruv:",
+        placeholder="masalan: iPhone 13 Pro yoki 128GB...",
+    )
+
+    if search_qoldiq.strip():
+      df_ombor = df_ombor[
+          df_ombor["model"].str.contains(
+              search_qoldiq.strip(), case=False, na=False
+          )
+          | df_ombor["xotira"].str.contains(
+              search_qoldiq.strip(), case=False, na=False
+          )
+          | df_ombor["rang"].str.contains(
+              search_qoldiq.strip(), case=False, na=False
+          )
+      ]
+
+    qoldiq_summary = (
+        df_ombor.groupby([
+            "partiya_id",
+            "model",
+            "xotira",
+            "rang",
+            "grade",
+            "taminotchi",
+            "tannarx",
+        ])
+        .size()
+        .reset_index(name="Ombordagi Qoldiq (ta)")
+    )
+
+    qoldiq_summary["Jami Qoldiq Qiymati ($)"] = (
+        qoldiq_summary["Ombordagi Qoldiq (ta)"] * qoldiq_summary["tannarx"]
+    )
+
+    qoldiq_summary.columns = [
+        "Partiya ID",
+        "Model",
+        "Xotira",
+        "Rang",
+        "Grade",
+        "Ta'minotchi",
+        "1 Dona Tannarxi ($)",
+        "Qoldiq (ta)",
+        "Jami Qoldiq Summasi ($)",
+    ]
+
+    st.dataframe(qoldiq_summary, use_container_width=True)
+
+    kam_qolganlar = qoldiq_summary[qoldiq_summary["Qoldiq (ta)"] <= 3]
+    if not kam_qolganlar.empty:
+      st.error(
+          "⚠️ **DIQQAT! Quyidagi modellardan omborda juda kam (3 ta yoki undan"
+          " kam) qoldi:**"
+      )
+      st.dataframe(
+          kam_qolganlar[
+              ["Model", "Xotira", "Rang", "Qoldiq (ta)", "1 Dona Tannarxi ($)"]
+          ],
+          use_container_width=True,
+      )
+
+# --- 3. OPTOM / DONA KIRIM QILISH ---
+elif menu == "➕ Optom / Dona Kirim Qilish":
+  st.header("📦 Ta'minotchidan Yuk Kirim Qilish")
+
+  taminotchi = st.text_input(
+      "👤 Ta'minotchi / Kimdan olingan (masalan: Ali Dubai / Market 77)",
+      key="taminotchi_input",
+  )
+
+  st.markdown("---")
+  st.subheader("➕ Model Ma'lumotlari")
 
   col1, col2, col3 = st.columns(3)
   with col1:
@@ -242,32 +446,14 @@ if menu == "➕ Optom / Dona Kirim Qilish":
 
   ushbu_model_jami = soni * olingan_narx
 
-  st.markdown(
-      f"""
-        <div style="
-            background-color: #f1f5f9;
-            border-left: 5px solid #3b82f6;
-            padding: 10px 15px;
-            border-radius: 6px;
-            margin: 10px 0px 15px 0px;
-            font-size: 16px;
-            color: #1e293b;
-        ">
-            💰 <b>Ushbu modelning jami summasi:</b> <span style="color: #2563eb; font-weight: bold; font-size: 18px;">${ushbu_model_jami:,.2f}</span> ({soni} ta x ${olingan_narx:,.2f})
-        </div>
-    """,
-      unsafe_allow_html=True,
-  )
-
-  st.markdown("### 📲 IMEI 1 va IMEI 2 Kiritish Usulini Tanlang:")
-
+  st.markdown("### 📲 IMEI 1 va IMEI 2 Kiritish Usuli:")
   imei_kiritish_usuli = st.radio(
       "Kiritish qulayligini tanlang:",
       [
           "1️⃣ Har bir telefon uchun alohida kataklar (Skaner / Qo'lda)",
           "2️⃣ Excel fayl yuklash (.xlsx)",
           "3️⃣ Nusxalangan matn shaklida (Copy-Paste)",
-          "4️⃣ Hozircha kiritmaslik (Keyinchalik Excelda yoki qo'lda yuklanadi)",
+          "4️⃣ Hozircha kiritmaslik",
       ],
       horizontal=True,
   )
@@ -278,16 +464,11 @@ if menu == "➕ Optom / Dona Kirim Qilish":
       imei_kiritish_usuli
       == "1️⃣ Har bir telefon uchun alohida kataklar (Skaner / Qo'lda)"
   ):
-    st.info(
-        f"Kiritilayotgan {soni} ta telefon uchun IMEI 1 va IMEI 2 raqamlarini"
-        " kiriting:"
-    )
-
     max_rows = min(int(soni), 50)
     for i in range(max_rows):
       c_no, c_im1, c_im2 = st.columns([1, 4, 4])
       with c_no:
-        st.markdown(f"**#{i+1}-telefon:**")
+        st.markdown(f"**#{i+1}:**")
       with c_im1:
         im1 = st.text_input(
             f"IMEI 1",
@@ -299,20 +480,16 @@ if menu == "➕ Optom / Dona Kirim Qilish":
         im2 = st.text_input(
             f"IMEI 2",
             key=f"im2_{i}",
-            placeholder="IMEI2 (ixtiyoriy)",
+            placeholder="IMEI2",
             label_visibility="collapsed",
         )
-
       if im1.strip():
         imei_pairs.append((im1.strip(), im2.strip()))
 
   elif imei_kiritish_usuli == "2️⃣ Excel fayl yuklash (.xlsx)":
     uploaded_excel = st.file_uploader(
-        "IMEI raqamlari mavjud Excel faylni kiriting",
-        type=["xlsx", "xls"],
-        key="kirim_excel",
+        "Excel faylni yuklang", type=["xlsx", "xls"], key="kirim_excel"
     )
-    st.caption("Eslatma: Excelda **IMEI** va **IMEI2** ustunlari bo'lishi kerak.")
     if uploaded_excel is not None:
       try:
         df_ex = pd.read_excel(uploaded_excel)
@@ -329,23 +506,14 @@ if menu == "➕ Optom / Dona Kirim Qilish":
           )
           if i1 and i1 != "nan":
             imei_pairs.append((i1, i2))
-        st.success(
-            f"✅ Exceldan {len(imei_pairs)} ta telefon IMEI lari o'qib olindi!"
+        st.toast(
+            f"✅ DONE! Exceldan {len(imei_pairs)} ta IMEI o'qildi.", icon="📊"
         )
       except Exception as e:
         st.error(f"Excelni o'qishda xatolik: {e}")
 
   elif imei_kiritish_usuli == "3️⃣ Nusxalangan matn shaklida (Copy-Paste)":
-    st.caption(
-        "Har bir qatorda bittadan: `358123456789012, 358123456789013` deb"
-        " vergul bilan yopishtiring."
-    )
-    imei_matn = st.text_area(
-        "IMEI lar ro'yxati:",
-        height=120,
-        placeholder="358123456789012, 358123456789013\n359876543210987,"
-        " 359876543210988",
-    )
+    imei_matn = st.text_area("IMEI lar ro'yxati (har bir qatorda bittadan):")
     if imei_matn:
       for line in imei_matn.split("\n"):
         line_clean = str(line).strip()
@@ -357,8 +525,6 @@ if menu == "➕ Optom / Dona Kirim Qilish":
           i1 = parts[0] if len(parts) > 0 else ""
           i2 = parts[1] if len(parts) > 1 else ""
           imei_pairs.append((i1, i2))
-
-  st.markdown("<br>", unsafe_allow_html=True)
 
   if st.button("➕ USHBU MODELNI RO'YXATGA QO'SHISH", use_container_width=True):
     if model and soni > 0:
@@ -372,188 +538,131 @@ if menu == "➕ Optom / Dona Kirim Qilish":
           "jami_summa": ushbu_model_jami,
           "imei_pairs": imei_pairs,
       }
-
       st.session_state.kirim_savatcha.append(yangi_item)
       st.session_state.oxirgi_qoshilgan = yangi_item
+      st.toast(f"✅ DONE! {model} savatchaga qo'shildi.", icon="🛒")
       st.rerun()
-    else:
-      st.error("❌ Iltimos, model nomini va sonini kiriting!")
-
-  if st.session_state.oxirgi_qoshilgan:
-    oxirgi = st.session_state.oxirgi_qoshilgan
-    st.success(
-        f"✅ MODEL RO'YXATGA QO'SHILDI: {oxirgi['model']} ({oxirgi['xotira']}) -"
-        f" {oxirgi['soni']} ta - Dona: ${oxirgi['olingan_narx']:,.2f} - Jami:"
-        f" ${oxirgi['jami_summa']:,.2f}"
-    )
 
   if st.session_state.kirim_savatcha:
     st.markdown("---")
-    st.subheader("📋 Kirim qilinayotgan barcha telefonlar ro'yxati:")
-
-    df_savatcha = pd.DataFrame(st.session_state.kirim_savatcha)
-
-    jami_soni = df_savatcha["soni"].sum()
-    jami_partiya_summasi = df_savatcha["jami_summa"].sum()
-
+    st.subheader("📋 Kirim qilinayotgan telefonlar savatchasi:")
     for idx, item in enumerate(st.session_state.kirim_savatcha):
-      imei_soni = len(item["imei_pairs"])
-      m_nomi = item["model"]
-      m_xotira = item["xotira"]
-      m_rang = item["rang"]
-      m_grade = item["grade"]
-      m_soni = item["soni"]
-      m_dona = item["olingan_narx"]
-      m_jami = item["jami_summa"]
-
       st.markdown(
           f"""
             <div class="item-card">
-                <span style="font-size: 18px; font-weight: bold; color: #1e293b;">
-                    #{idx+1}. {m_nomi} ({m_xotira})
-                </span> - <span style="color: #64748b;">Rangi: {m_rang} - Grade: {m_grade}</span><br>
-                <span style="font-size: 16px; font-weight: 600; color: #0f766e;">
-                    📦 Soni: {m_soni} ta - 💵 Dona narxi: ${m_dona:,.2f} - 💰 Jami: ${m_jami:,.2f} - 📱 Kiritilgan IMEI: {imei_soni} ta
-                </span>
+                <b>#{idx+1}. {item['model']} ({item['xotira']})</b> - Rangi: {item['rang']} - Grade: {item['grade']}<br>
+                <span>📦 Soni: {item['soni']} ta | 💵 Dona: ${item['olingan_narx']:,.2f} | 💰 Jami: ${item['jami_summa']:,.2f} | IMEI: {len(item['imei_pairs'])} ta</span>
             </div>
             """,
           unsafe_allow_html=True,
       )
 
-    st.markdown("### 📊 PARTIYAGA TEGISHLI JAMI HISOB-KITOB:")
-    m_col1, m_col2 = st.columns(2)
-    m_col1.metric("📦 Jami Telefonlar Soni", f"{jami_soni} ta")
-    m_col2.metric("💵 Jami Yuk Summasi", f"${jami_partiya_summasi:,.2f}")
+    if st.button(
+        "🚀 BARCHASINI OMBORGA KIRIM QILISH",
+        type="primary",
+        use_container_width=True,
+    ):
+      sana = datetime.now().strftime("%Y-%m-%d %H:%M")
+      for item in st.session_state.kirim_savatcha:
+        cursor.execute(
+            """
+                    INSERT INTO partiyalar (sana, taminotchi, model, xotira, rang, grade, boshlangich_soni, olingan_narx, tannarx)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+            (
+                sana,
+                taminotchi,
+                item["model"],
+                item["xotira"],
+                item["rang"],
+                item["grade"],
+                item["soni"],
+                item["olingan_narx"],
+                item["olingan_narx"],
+            ),
+        )
+        partiya_id = cursor.lastrowid
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    col_btn1, col_btn2 = st.columns([2, 1])
-    with col_btn1:
-      if st.button(
-          "🚀 BARCHASINI OMBORGA KIRIM QILISH",
-          type="primary",
-          use_container_width=True,
-      ):
-        sana = datetime.now().strftime("%Y-%m-%d %H:%M")
-        for item in st.session_state.kirim_savatcha:
+        for imei1, imei2 in item["imei_pairs"]:
           cursor.execute(
               """
-                        INSERT INTO partiyalar (sana, taminotchi, model, xotira, rang, grade, boshlangich_soni, olingan_narx, tannarx)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO imei_baza (partiya_id, model, imei1, imei2, status)
+                        VALUES (?, ?, ?, ?, 'Omborda')
                     """,
-              (
-                  sana,
-                  taminotchi,
-                  item["model"],
-                  item["xotira"],
-                  item["rang"],
-                  item["grade"],
-                  item["soni"],
-                  item["olingan_narx"],
-                  item["olingan_narx"],
-              ),
+              (partiya_id, item["model"], imei1, imei2),
           )
-          partiya_id = cursor.lastrowid
 
-          for imei1, imei2 in item["imei_pairs"]:
+        qolgan = item["soni"] - len(item["imei_pairs"])
+        if qolgan > 0:
+          for i in range(qolgan):
             cursor.execute(
                 """
                             INSERT INTO imei_baza (partiya_id, model, imei1, imei2, status)
                             VALUES (?, ?, ?, ?, 'Omborda')
                         """,
-                (partiya_id, item["model"], imei1, imei2),
+                (
+                    partiya_id,
+                    item["model"],
+                    f"⚠️ IMEI kiritilmagan ({len(item['imei_pairs'])+i+1}-telefon)",
+                    "",
+                ),
             )
 
-          qolgan = item["soni"] - len(item["imei_pairs"])
-          if qolgan > 0:
-            for i in range(qolgan):
-              cursor.execute(
-                  """
-                                INSERT INTO imei_baza (partiya_id, model, imei1, imei2, status)
-                                VALUES (?, ?, ?, ?, 'Omborda')
-                            """,
-                  (
-                      partiya_id,
-                      item["model"],
-                      f"⚠️ IMEI kiritilmagan ({len(item['imei_pairs'])+i+1}-telefon)",
-                      "",
-                  ),
-              )
+      conn.commit()
+      st.session_state.kirim_savatcha = []
+      st.session_state.oxirgi_qoshilgan = None
+      st.balloons()
+      st.toast("✅ DONE! Yuklar omborga saqlandi.", icon="🚀")
+      st.rerun()
 
-        conn.commit()
-        st.session_state.kirim_savatcha = []
-        st.session_state.oxirgi_qoshilgan = None
-        st.balloons()
-        st.success(
-            f"✅ Barcha telefonlar muvaffaqiyatli omborga saqlandi! Jami:"
-            f" {jami_soni} ta (${jami_partiya_summasi:,.2f})"
-        )
-        st.rerun()
-
-    with col_btn2:
-      if st.button(
-          "🗑️ Ro'yxatni tozalash", type="secondary", use_container_width=True
-      ):
-        st.session_state.kirim_savatcha = []
-        st.session_state.oxirgi_qoshilgan = None
-        st.rerun()
-
-# --- 2. PARTIYALAR TANNARXINI HISOBLASH ---
+# --- 4. PARTIYALAR TANNARXINI HISOBLASH ---
 elif menu == "💰 Partiyalar Tannarxini Hisoblash":
-  st.header("🛠️ Partiyaga Qo'shimcha Xarajatlar Qo'shish va Tannarx Chiqarish")
+  st.header("🛠️ Partiyaga Xarajatlar va Pul Jo'natma Foizi")
 
   df_partiyalar = pd.read_sql("SELECT * FROM partiyalar", conn)
 
   if df_partiyalar.empty:
-    st.warning("Hozircha omborda partiyalar yo'q. Avval kirim qiling!")
+    st.warning("Hozircha omborda partiyalar yo'q.")
   else:
-    partiya_id_selected = st.selectbox(
-        "Tannarxini hisoblamoqchi bo'lgan Partiya ID raqamini tanlang:",
-        df_partiyalar["id"].tolist(),
+    partiya_options = {}
+    for _, row in df_partiyalar.iterrows():
+      xot = f" ({row['xotira']})" if row["xotira"] else ""
+      rng = f" - {row['rang']}" if row["rang"] else ""
+      label = f"ID: {row['id']} — {row['model']}{xot}{rng} (Boshlang'ich: {row['boshlangich_soni']} ta)"
+      partiya_options[label] = row["id"]
+
+    selected_label = st.selectbox(
+        "Tannarxini hisoblamoqchi bo'lgan Partiyani tanlang:",
+        list(partiya_options.keys()),
     )
+    partiya_id_selected = partiya_options[selected_label]
 
     p_row = df_partiyalar[df_partiyalar["id"] == partiya_id_selected].iloc[0]
 
     soni = p_row["boshlangich_soni"]
     olingan_narx = p_row["olingan_narx"]
-    xotira = p_row["xotira"] if p_row["xotira"] else ""
-    rang = p_row["rang"] if p_row["rang"] else ""
 
-    st.markdown(
-        f"### 📱 Partiya: **{p_row['model']} ({xotira} - {rang})** | Soni:"
-        f" **{soni} ta** | Boshlang'ich Narxi: **${olingan_narx:,.2f}**"
+    st.info(
+        f"Model: **{p_row['model']} ({p_row['xotira']})** | Soni: **{soni} ta**"
+        f" | Boshlang'ich Narxi: **${olingan_narx:,.2f}**"
     )
 
-    st.markdown("---")
-    col_x1, col_x2 = st.columns([1, 1])
-
+    col_x1, col_x2 = st.columns(2)
     with col_x1:
-      st.subheader("➕ Yangi Xarajat Qo'shish")
-      xarajat_nomi = st.text_input(
-          "Xarajat nomi (masalan: Remont, Karobka, Dostavka)",
-          placeholder="masalan: Usta haqisi / Karobka",
-      )
-
+      xarajat_nomi = st.text_input("Xarajat nomi (Dostavka, Remont, Karobka)")
       xarajat_turi = st.radio(
-          "Xarajat turi:",
-          [
-              "🏢 Jami partiya uchun umumiy summa (telefonlarga teng bo'linadi)",
-              "📱 Har bir dona telefon uchun alohida summa",
-          ],
+          "Xarajat turi:", ["Jami partiya uchun", "Har bir dona uchun"]
       )
-
       xarajat_summasi = st.number_input(
-          "Summa ($)", min_value=0.0, step=10.0, value=0.0
+          "Summa ($)", min_value=0.0, step=5.0, value=0.0
       )
 
       if st.button("➕ Xarajatni Saqlash"):
         if xarajat_nomi and xarajat_summasi > 0:
           sana_h = datetime.now().strftime("%Y-%m-%d %H:%M")
           tur_str = (
-              "Partiya uchun"
-              if "Jami partiya" in xarajat_turi
-              else "Dona uchun"
+              "Partiya uchun" if "Jami" in xarajat_turi else "Dona uchun"
           )
-
           cursor.execute(
               """
                         INSERT INTO partiya_xarajatlari (partiya_id, sana, xarajat_nomi, summa, tur)
@@ -568,489 +677,340 @@ elif menu == "💰 Partiyalar Tannarxini Hisoblash":
               ),
           )
           conn.commit()
-          st.success("✅ Xarajat muvaffaqiyatli qo'shildi!")
+          st.toast("✅ DONE! Xarajat qo'shildi.", icon="💵")
           st.rerun()
-        else:
-          st.error("❌ Iltimos, xarajat nomi va summasini to'g'ri kiriting!")
 
     with col_x2:
-      st.subheader("📋 Ushbu Partiyaning Xarajatlari Tarixi:")
       df_xarajat = pd.read_sql(
           f"SELECT id, sana, xarajat_nomi, summa, tur FROM partiya_xarajatlari WHERE partiya_id = {partiya_id_selected}",
           conn,
       )
-
-      if df_xarajat.empty:
-        st.caption("Hozircha bu partiyaga qo'shimcha xarajatlar kiritilmadi.")
-      else:
-        st.dataframe(df_xarajat, use_container_width=True)
-
-        silish_x_id = st.selectbox(
-            "O'chirmoqchi bo'lgan xarajat ID raqami:", df_xarajat["id"].tolist()
-        )
-        if st.button("🗑️ Xarajatni o'chirish"):
-          cursor.execute(
-              "DELETE FROM partiya_xarajatlari WHERE id = ?", (silish_x_id,)
-          )
-          conn.commit()
-          st.success("✅ Xarajat o'chirildi!")
-          st.rerun()
+      st.dataframe(df_xarajat, use_container_width=True)
 
     st.markdown("---")
-    st.subheader("📊 TANNARX HISOB-KITOBI XULOSASI:")
+    pul_jonatma_foiz = st.number_input(
+        "Pul jo'natma (kirim perevod) foizi (%):",
+        min_value=0.0,
+        max_value=10.0,
+        value=0.5,
+        step=0.1,
+    )
+    pul_jonatma_dona = olingan_narx * (pul_jonatma_foiz / 100.0)
 
-    jami_partiya_xarajat = 0.0
-    har_bir_dona_xarajat = 0.0
-
-    if not df_xarajat.empty:
-      for _, row_x in df_xarajat.iterrows():
-        if row_x["tur"] == "Partiya uchun":
-          jami_partiya_xarajat += row_x["summa"]
-        else:
-          har_bir_dona_xarajat += row_x["summa"]
+    jami_partiya_xarajat = (
+        df_xarajat[df_xarajat["tur"] == "Partiya uchun"]["summa"].sum()
+        if not df_xarajat.empty
+        else 0
+    )
+    har_bir_dona_xarajat = (
+        df_xarajat[df_xarajat["tur"] == "Dona uchun"]["summa"].sum()
+        if not df_xarajat.empty
+        else 0
+    )
 
     dona_qoshimcha = (
         jami_partiya_xarajat / soni if soni > 0 else 0
     ) + har_bir_dona_xarajat
-    yangi_tannarx = olingan_narx + dona_qoshimcha
-    jami_partiya_tannarxi = yangi_tannarx * soni
+    yangi_tannarx = olingan_narx + dona_qoshimcha + pul_jonatma_dona
 
-    c_m1, c_m2, c_m3 = st.columns(3)
-    c_m1.metric("💵 Boshlang'ich Olingan Narxi", f"${olingan_narx:,.2f}")
-    c_m2.metric(
-        "🛠️ 1 Dona uchun Qo'shimcha Xarajat", f"+${dona_qoshimcha:,.2f}"
-    )
-    c_m3.metric(
-        "⭐ YANGI ANIQ TANNARX (1 dona)",
-        f"${yangi_tannarx:,.2f}",
-        delta=f"+${dona_qoshimcha:,.2f}",
-    )
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("💵 Olingan Narxi", f"${olingan_narx:,.2f}")
+    m2.metric(f"💸 Perevod ({pul_jonatma_foiz}%)", f"+${pul_jonatma_dona:,.2f}")
+    m3.metric("🛠️ Boshqa Xarajat", f"+${dona_qoshimcha:,.2f}")
+    m4.metric("⭐ ANIQ TANNARX", f"${yangi_tannarx:,.2f}")
 
-    st.markdown(
-        f"""
-        <div style="
-            background-color: #ecfdf5;
-            border-left: 5px solid #10b981;
-            padding: 12px 20px;
-            border-radius: 8px;
-            margin: 15px 0px;
-            font-size: 18px;
-            color: #065f46;
-        ">
-            💰 <b>Ushbu <u>{soni} ta</u> telefonning umumiy tannarx qiymati:</b> 
-            <span style="font-weight: 800; font-size: 24px; color: #047857;">${jami_partiya_tannarxi:,.2f}</span>
-        </div>
-    """,
-        unsafe_allow_html=True,
-    )
-
-    if st.button("💾 USHBU TANNARXNI BAZAGA SAQLASH VA YANGILASH"):
+    if st.button("💾 USHBU TANNARXNI BAZAGA SAQLASH"):
       cursor.execute(
           "UPDATE partiyalar SET tannarx = ? WHERE id = ?",
           (yangi_tannarx, partiya_id_selected),
       )
       conn.commit()
       st.balloons()
-      st.success(
-          f"✅ Partiyaning tannarxi muvaffaqiyatli saqlandi! Yangi tannarx:"
-          f" ${yangi_tannarx:,.2f}"
-      )
+      st.toast("✅ DONE! Yangi tannarx saqlandi.", icon="⭐")
       st.rerun()
 
-# --- 3. KIRIMLARNI BOSHQARISH ---
+# --- 5. KIRIMLARNI BOSHQARISH ---
 elif menu == "✏️ Kirimlarni Boshqarish (O'chirish)":
-  st.header("📋 Kirim qilingan partiyalar va ularning summalari")
-
+  st.header("📋 Kirim Qilingan Partiyalarni Boshqarish")
   df_partiya = pd.read_sql("SELECT * FROM partiyalar", conn)
 
-  if df_partiya.empty:
-    st.info("Hozircha omborda partiyalar yo'q.")
-  else:
-    df_partiya["boshlangich_soni"] = pd.to_numeric(
-        df_partiya["boshlangich_soni"], errors="coerce"
-    ).fillna(0)
-    df_partiya["olingan_narx"] = pd.to_numeric(
-        df_partiya["olingan_narx"], errors="coerce"
-    ).fillna(0)
-    df_partiya["tannarx"] = pd.to_numeric(
-        df_partiya["tannarx"], errors="coerce"
-    ).fillna(df_partiya["olingan_narx"])
+  if not df_partiya.empty:
+    st.dataframe(df_partiya, use_container_width=True)
 
-    df_partiya["Jami Olingan Summa ($)"] = (
-        df_partiya["boshlangich_soni"] * df_partiya["olingan_narx"]
+    partiya_del_options = {}
+    for _, row in df_partiya.iterrows():
+      label = (
+          f"ID: {row['id']} — {row['model']} ({row['xotira']} - {row['rang']})"
+      )
+      partiya_del_options[label] = row["id"]
+
+    del_label = st.selectbox(
+        "O'chirmoqchi bo'lgan partiyani tanlang:",
+        list(partiya_del_options.keys()),
     )
-    df_partiya["Jami Tannarx Summasi ($)"] = (
-        df_partiya["boshlangich_soni"] * df_partiya["tannarx"]
-    )
+    silish_id = partiya_del_options[del_label]
 
-    jami_son = df_partiya["boshlangich_soni"].sum()
-    jami_summa_barcha = df_partiya["Jami Tannarx Summasi ($)"].sum()
-
-    m_col1, m_col2 = st.columns(2)
-    m_col1.metric("📦 Ombordagi Partiyalar Soni", f"{int(jami_son)} ta")
-    m_col2.metric("💵 Jami Kirim Qilingan Yuk Tannarxi", f"${jami_summa_barcha:,.2f}")
-
-    st.markdown("---")
-    st.markdown("### 📊 Partiyalar Ro'yxati va Summalari:")
-
-    df_display = df_partiya[[
-        "id",
-        "sana",
-        "taminotchi",
-        "model",
-        "xotira",
-        "rang",
-        "grade",
-        "boshlangich_soni",
-        "olingan_narx",
-        "tannarx",
-        "Jami Tannarx Summasi ($)",
-    ]].copy()
-
-    df_display.columns = [
-        "ID",
-        "Sana",
-        "Ta'minotchi",
-        "Model",
-        "Xotira",
-        "Rang",
-        "Grade",
-        "Soni (ta)",
-        "Olingan Narxi ($)",
-        "Tannarx ($)",
-        "Jami Tannarx ($)",
-    ]
-
-    st.dataframe(df_display, use_container_width=True)
-
-    st.markdown("---")
-    silish_id = st.selectbox(
-        "O'chirmoqchi bo'lgan partiya ID raqamini tanlang:",
-        df_partiya["id"].tolist(),
-    )
-
-    if st.button("🗑️ Tanlangan partiyani va unga tegishli IMEI larni o'chirish"):
+    if st.button("🗑️ Tanlangan Partiyani O'chirish", type="primary"):
       cursor.execute("DELETE FROM partiyalar WHERE id = ?", (silish_id,))
       cursor.execute("DELETE FROM imei_baza WHERE partiya_id = ?", (silish_id,))
       cursor.execute(
           "DELETE FROM partiya_xarajatlari WHERE partiya_id = ?", (silish_id,)
       )
       conn.commit()
-      st.success(
-          f"✅ Bajarildi! {silish_id}-ID raqamli partiya muvaffaqiyatli"
-          " o'chirildi!"
-      )
+      st.toast(f"✅ DONE! {silish_id}-ID partiya o'chirildi.", icon="🗑️")
       st.rerun()
 
-# --- 4. IMEI EXCEL / QO'LDA KIRITISH YOKI YANGILASH ---
-elif menu == "📥 IMEI Excel / Qo'lda Kiritish yoki Yangilash":
-  st.header("📲 Partiyadagi IMEI raqamlarni yangilash / qo'lda kiritish")
-
+# --- 6. IMEI EXCEL / QO'LDA KIRITISH ---
+elif menu == "📥 IMEI Excel / Qo'lda Kiritish":
+  st.header("📲 IMEI Raqamlarni Yangilash")
   df_partiya = pd.read_sql("SELECT * FROM partiyalar", conn)
-  if df_partiya.empty:
-    st.info("Hozircha omborda partiyalar yo'q. Avval kirim qiling!")
-  else:
-    secilgan_partiya_id = st.selectbox(
-        "IMEI raqamlarini to'g'rilamoqchi bo'lgan Partiya ID raqamini tanlang:",
-        df_partiya["id"].tolist(),
-    )
 
-    partiya_row = df_partiya[df_partiya["id"] == secilgan_partiya_id].iloc[0]
-    st.info(
-        f"Tanlangan partiya: **{partiya_row['model']} ({partiya_row['xotira']} -"
-        f" {partiya_row['rang']})** | Soni: **{partiya_row['boshlangich_soni']} ta**"
-    )
-
-    tab_ex, tab_manual = st.tabs(
-        ["📄 Excel orqali o'zgartirish", "✍️ Qo'lda yakka-yakka to'g'rilash"]
-    )
-
-    with tab_ex:
-      uploaded_file = st.file_uploader(
-          "IMEI raqamlari yozilgan Excel faylni yuklang (.xlsx)",
-          type=["xlsx", "xls"],
+  if not df_partiya.empty:
+    p_options = {}
+    for _, row in df_partiya.iterrows():
+      label = (
+          f"ID: {row['id']} — {row['model']} ({row['xotira']} - {row['rang']})"
       )
-      st.caption("Excelda **IMEI** va **IMEI2** nomli ustunlar bo'lishi kerak.")
+      p_options[label] = row["id"]
 
-      if st.button("🚀 Exceldagi IMEI larni Bazaga Yuklash"):
-        if uploaded_file is not None:
-          try:
-            df_excel = pd.read_excel(uploaded_file)
-            cursor.execute(
-                "DELETE FROM imei_baza WHERE partiya_id = ?",
-                (secilgan_partiya_id,),
+    sec_label = st.selectbox(
+        "Partiya va Modelni tanlang:", list(p_options.keys())
+    )
+    secilgan_partiya_id = p_options[sec_label]
+
+    uploaded_file = st.file_uploader(
+        "Excel fayl yuklang (.xlsx)", type=["xlsx", "xls"]
+    )
+
+    if st.button("🚀 Exceldagi IMEI larni Bazaga Yuklash"):
+      if uploaded_file is not None:
+        try:
+          df_excel = pd.read_excel(uploaded_file)
+          cursor.execute(
+              "DELETE FROM imei_baza WHERE partiya_id = ?",
+              (secilgan_partiya_id,),
+          )
+          p_model = df_partiya[df_partiya["id"] == secilgan_partiya_id][
+              "model"
+          ].values[0]
+
+          for _, row in df_excel.iterrows():
+            i1 = (
+                str(row["IMEI"]).strip().replace(".0", "")
+                if "IMEI" in df_excel.columns
+                else ""
             )
-
-            for _, row in df_excel.iterrows():
-              imei1 = (
-                  str(row["IMEI"]).strip().replace(".0", "")
-                  if "IMEI" in df_excel.columns
-                  else ""
-              )
-              imei2 = (
-                  str(row["IMEI2"]).strip().replace(".0", "")
-                  if "IMEI2" in df_excel.columns
-                  else ""
-              )
-              if imei1 and imei1 != "nan":
-                cursor.execute(
-                    """
-                            INSERT INTO imei_baza (partiya_id, model, imei1, imei2, status)
-                            VALUES (?, ?, ?, ?, 'Omborda')
-                        """,
-                    (secilgan_partiya_id, partiya_row["model"], imei1, imei2),
-                )
-
-            conn.commit()
-            st.balloons()
-            st.success("✅ Exceldagi barcha IMEI lar muvaffaqiyatli saqlandi!")
-            st.rerun()
-          except Exception as e:
-            st.error(f"Xatolik: {e}")
-
-    with tab_manual:
-      st.markdown(
-          "### Ushbu partiyadagi mavjud telefonlar va ularning IMEI lari:"
-      )
-
-      cursor.execute(
-          "SELECT id, imei1, imei2 FROM imei_baza WHERE partiya_id = ?",
-          (secilgan_partiya_id,),
-      )
-      imei_list = cursor.fetchall()
-
-      if not imei_list:
-        st.warning("Bu partiyada hali IMEI raqamlari mavjud emas.")
-      else:
-        with st.form("imei_update_form"):
-          updated_data = []
-          for row_id, im1, im2 in imei_list:
-            c1, c2 = st.columns(2)
-            with c1:
-              val_im1 = st.text_input(
-                  f"IMEI 1 (ID: {row_id})",
-                  value=im1,
-                  key=f"m_im1_{row_id}",
-              )
-            with c2:
-              val_im2 = st.text_input(
-                  f"IMEI 2 (ID: {row_id})",
-                  value=im2,
-                  key=f"m_im2_{row_id}",
-              )
-            updated_data.append((row_id, val_im1, val_im2))
-
-          if st.form_submit_button("💾 BARCHA IMEI LARNI SAQLASH"):
-            for r_id, new_i1, new_i2 in updated_data:
+            i2 = (
+                str(row["IMEI2"]).strip().replace(".0", "")
+                if "IMEI2" in df_excel.columns
+                else ""
+            )
+            if i1 and i1 != "nan":
               cursor.execute(
-                  "UPDATE imei_baza SET imei1 = ?, imei2 = ? WHERE id = ?",
-                  (new_i1.strip(), new_i2.strip(), r_id),
+                  """
+                        INSERT INTO imei_baza (partiya_id, model, imei1, imei2, status)
+                        VALUES (?, ?, ?, ?, 'Omborda')
+                    """,
+                  (secilgan_partiya_id, p_model, i1, i2),
               )
-            conn.commit()
-            st.success("✅ Barcha IMEI raqamlari muvaffaqiyatli yangilandi!")
-            st.rerun()
+          conn.commit()
+          st.toast("✅ DONE! Excel IMEI lari saqlandi.", icon="📲")
+          st.rerun()
+        except Exception as e:
+          st.error(f"Xatolik: {e}")
 
-# --- 5. SOTUV QILISH ---
+# --- 7. SOTUV QILISH ---
 elif menu == "🛒 Sotuv Qilish (Dona / Optom)":
-  st.header("Ombordagi qoldiqlar va Sotuvni Rasmiylashtirish")
+  st.header("🛒 Sotuvni Rasmiylashtirish")
 
-  query_ombor = """
-        SELECT i.id, i.partiya_id, i.model, i.imei1, i.imei2, p.xotira, p.rang, p.grade, p.olingan_narx, p.tannarx, p.taminotchi
-        FROM imei_baza i
-        JOIN partiyalar p ON i.partiya_id = p.id
+  df_omborda = pd.read_sql(
+      """
+        SELECT i.id, i.partiya_id, i.model, i.imei1, i.imei2, p.xotira, p.rang, p.grade, p.tannarx, p.olingan_narx
+        FROM imei_baza i JOIN partiyalar p ON i.partiya_id = p.id
         WHERE i.status = 'Omborda'
-    """
-  df_omborda = pd.read_sql(query_ombor, conn)
+    """,
+      conn,
+  )
 
   if df_omborda.empty:
-    st.info("Hozircha omborda sotish uchun telefonlar yo'q!")
+    st.info("Omborda sotish uchun telefon yo'q!")
   else:
-    st.markdown("### 📋 Ombordagi Model Qoldiqlari:")
-    qoldiq_summary = (
+    ombor_partiya_summary = (
         df_omborda.groupby(
-            ["partiya_id", "model", "xotira", "rang", "tannarx"]
+            ["partiya_id", "model", "xotira", "rang", "grade", "tannarx"]
         )
         .size()
-        .reset_index(name="Ombordagi Qoldiq (ta)")
+        .reset_index(name="qoldiq")
     )
-    st.dataframe(qoldiq_summary, use_container_width=True)
 
-    st.markdown("---")
-    st.markdown("### 💸 Sotuvni Rasmiylashtirish")
+    partiya_select_dict = {}
+    for _, r in ombor_partiya_summary.iterrows():
+      p_id = r["partiya_id"]
+      m_nomi = r["model"]
+      xot = f" ({r['xotira']})" if r["xotira"] else ""
+      rng = f" - {r['rang']}" if r["rang"] else ""
+      grd = f" [{r['grade']}]" if r["grade"] else ""
+      qold = r["qoldiq"]
 
-    partiya_list = df_omborda["partiya_id"].unique().tolist()
-    secilgan_partiya_id = st.selectbox(
-        "Sotiladigan Partiya ID raqamini tanlang:", partiya_list
+      label = f"ID: {p_id} — {m_nomi}{xot}{rng}{grd} | Omborda qolgan: {qold} ta"
+      partiya_select_dict[label] = p_id
+
+    selected_partiya_label = st.selectbox(
+        "Sotiladigan Model va Partiyani tanlang:",
+        list(partiya_select_dict.keys()),
     )
+    secilgan_partiya_id = partiya_select_dict[selected_partiya_label]
 
     partiya_df = df_omborda[df_omborda["partiya_id"] == secilgan_partiya_id]
-
     first_row = partiya_df.iloc[0]
     tannarx_val = (
         first_row["tannarx"]
         if pd.notnull(first_row["tannarx"])
         else first_row["olingan_narx"]
     )
+    ombordagi_soni = len(partiya_df)
 
-    st.info(
-        f"Ta'minotchi: **{first_row['taminotchi'] if first_row['taminotchi'] else 'Noma’lum'}** - "
-        f"Model: **{first_row['model']} ({first_row['xotira']} - {first_row['rang']} - Grade: {first_row['grade']})** - "
-        f"Tannarxi: **${tannarx_val:,.2f}** - Ombordagi qoldiq: **{len(partiya_df)} ta**"
+    st.markdown("---")
+
+    df_existing_customers = pd.read_sql(
+        "SELECT DISTINCT mijoz_ismi FROM sotuvlar WHERE mijoz_ismi IS NOT NULL"
+        " AND mijoz_ismi != ''",
+        conn,
+    )
+    existing_customers = (
+        df_existing_customers["mijoz_ismi"].tolist()
+        if not df_existing_customers.empty
+        else []
     )
 
-    mijoz_ismi = st.text_input(
-        "👤 Mijozning ismi yoki Do'kon nomi (Kimga sotilyapti?)"
+    st.markdown("#### 👤 Mijoz Tanlash yoki Kiritish:")
+    customer_options = ["➕ Yangi mijoz kiritish..."] + existing_customers
+    selected_customer_option = st.selectbox(
+        "Oldingi mijozlar ro'yxatidan tanlang:",
+        customer_options,
+        key="customer_select",
     )
 
-    st.markdown("#### 🔍 IMEI va Model bo'yicha tezkor qidiruv:")
-    imei_search = st.text_input(
-        "🔎 IMEI raqami yoki model nomini kiriting (filtrlash uchun):",
-        placeholder="masalan: 35812 yoki iPhone...",
-    )
-
-    if imei_search.strip():
-      filtered_df = partiya_df[
-          partiya_df["imei1"].str.contains(
-              imei_search.strip(), case=False, na=False
-          )
-          | partiya_df["imei2"].str.contains(
-              imei_search.strip(), case=False, na=False
-          )
-          | partiya_df["model"].str.contains(
-              imei_search.strip(), case=False, na=False
-          )
-      ]
-    else:
-      filtered_df = partiya_df
-
-    st.caption(
-        f"💡 Qidiruv natijasida **{len(filtered_df)} ta** IMEI raqami"
-        " topildi."
-    )
-
-    imei_options = {}
-    for _, row in filtered_df.iterrows():
-      label = (
-          f"{row['imei1']} — {row['model']} ({row['xotira']} - {row['rang']})"
+    if selected_customer_option == "➕ Yangi mijoz kiritish...":
+      mijoz_ismi = st.text_input(
+          "👤 Yangi Mijoz Ismi / Do'kon Nomi:", placeholder="masalan: Hasanboy"
       )
-      imei_options[label] = row["imei1"]
+    else:
+      mijoz_ismi = selected_customer_option
 
-    tanlash_usuli = st.radio(
-        "Sotuv turini va IMEI tanlash usulini belgilang:",
+    st.markdown("---")
+    sotuv_usuli = st.radio(
+        "Sotish rejimini tanlang:",
         [
-            "1️⃣ Donalab sotish (1 ta IMEI tanlash)",
-            "2️⃣ Ro'yxatdan bir nechta belgilash (Multiselect)",
-            "3️⃣ Ko'plab IMEI larni nusxalab (Copy-Paste) kiritish",
+            "1️⃣ IMEI raqamlarni tanlash orqali sotish",
+            "2️⃣ IMEI siz (Faqat necha dona sotilganini kiritish)",
         ],
+        horizontal=True,
     )
 
-    tanlangan_imeilar = []
+    selected_imeis = []
+    sotilgan_soni = 0
 
-    if tanlash_usuli == "1️⃣ Donalab sotish (1 ta IMEI tanlash)":
-      dona_label = st.selectbox(
-          "Sotiladigan 1 dona telefon IMEI raqamini tanlang:",
-          ["-- Tanlang --"] + list(imei_options.keys()),
+    if sotuv_usuli == "1️⃣ IMEI raqamlarni tanlash orqali sotish":
+      selected_imeis = st.multiselect(
+          "Tanlangan modeldagi IMEI lar ro'yxati:", partiya_df["imei1"].tolist()
       )
-      if dona_label and dona_label != "-- Tanlang --":
-        tanlangan_imeilar = [imei_options[dona_label]]
-
-    elif tanlash_usuli == "2️⃣ Ro'yxatdan bir nechta belgilash (Multiselect)":
-      selected_labels = st.multiselect(
-          "Sotiladigan IMEI larni ro'yxatdan belgilang:",
-          list(imei_options.keys()),
-      )
-      tanlangan_imeilar = [imei_options[lbl] for lbl in selected_labels]
-
+      sotilgan_soni = len(selected_imeis)
     else:
-      st.markdown(
-          "👉 *Sotiladigan IMEI larni nusxalab, pastdagi katakka **har birini"
-          " yangi qatordan** yopishtiring (Ctrl+V):*"
+      sotilgan_soni = st.number_input(
+          f"🔢 Necha dona sotildi? (Omborda maks: {ombordagi_soni} ta):",
+          min_value=0,
+          max_value=ombordagi_soni,
+          value=1,
+          step=1,
       )
-      imei_matn = st.text_area(
-          "IMEI ro'yxati (har bir qatorda bittadan):", height=120
-      )
-      if imei_matn:
-        kiritilganlar = [
-            str(x).strip().replace(".0", "")
-            for x in imei_matn.split("\n")
-            if str(x).strip()
-        ]
-        ombor_set = set(partiya_df["imei1"].tolist())
-        tanlangan_imeilar = [i for i in kiritilganlar if i in ombor_set]
-        topilmaganlar = [i for i in kiritilganlar if i not in ombor_set]
-
-        st.info(f"✅ Topilgan va belgilangan IMEI lar: {len(tanlangan_imeilar)} ta")
-        if topilmaganlar:
-          st.error(
-              f"❌ Ushbu partiyada topilmagan IMEI lar: {len(topilmaganlar)} ta"
-          )
-
-    sotilgan_soni = len(tanlangan_imeilar)
+      selected_imeis = partiya_df["imei1"].tolist()[: int(sotilgan_soni)]
 
     if sotilgan_soni > 0:
-      st.markdown("---")
-      st.write(
-          f"💰 Tanlangan va sotilayotgan jami telefonlar soni:"
-          f" **{sotilgan_soni} ta**"
-      )
+      col_s1, col_s2 = st.columns(2)
+      with col_s1:
+        sotuv_narx_dona = st.number_input(
+            "💵 1 dona Sotilish narxi ($)", min_value=0.0, step=5.0
+        )
 
-      sotuv_narx_dona = st.number_input(
-          "💵 1 dona uchun SOTILISH narxi ($)", min_value=0.0, step=1.0
-      )
-      umumiy_narx = sotilgan_soni * sotuv_narx_dona
+        cargo_dona = st.number_input(
+            "🚚 Cargo / Dostavka xarajati (1 dona uchun $) [Dubayda sotilsa"
+            " 0 deb qoldiring]:",
+            min_value=0.0,
+            step=1.0,
+            value=0.0,
+        )
 
-      st.markdown(
-          f"""
-            <div style="
-                background-color: #e0f2fe;
-                border-left: 5px solid #0284c7;
-                padding: 10px 15px;
-                border-radius: 6px;
-                margin: 10px 0px 15px 0px;
-                font-size: 18px;
-                color: #0369a1;
-            ">
-                💰 <b>JAMI SAVDO SUMMASI:</b> <span style="font-weight: bold; font-size: 22px; color: #0284c7;">${umumiy_narx:,.2f}</span>
-            </div>
-        """,
-          unsafe_allow_html=True,
-      )
+        sotuv_perevod_foiz = st.number_input(
+            "💸 Sotuv Perevod komissiyasi (%):",
+            min_value=0.0,
+            max_value=10.0,
+            step=0.1,
+            value=0.0,
+        )
+
+      with col_s2:
+        umumiy_narx = sotilgan_soni * sotuv_narx_dona
+        jami_cargo = sotilgan_soni * cargo_dona
+        jami_perevod_komissiya = umumiy_narx * (sotuv_perevod_foiz / 100.0)
+
+        jami_tannarx = tannarx_val * sotilgan_soni
+        umumiy_foyda = (
+            umumiy_narx - jami_tannarx - jami_cargo - jami_perevod_komissiya
+        )
+
+        st.markdown(f"### 💰 Jami Savdo Summasi: **${umumiy_narx:,.2f}**")
+
+        details_str = []
+        if jami_cargo > 0:
+          details_str.append(f"Cargo: **${jami_cargo:,.2f}**")
+        if jami_perevod_komissiya > 0:
+          details_str.append(
+              f"Perevod ({sotuv_perevod_foiz}%):"
+              f" **${jami_perevod_komissiya:,.2f}**"
+          )
+
+        if details_str:
+          st.caption(" ➕ ".join(details_str))
+
+        st.info(
+            f"📈 Ushbu savdodan Aniq Sof Foyda: **${umumiy_foyda:,.2f}**"
+        )
 
       tolov_turi = st.selectbox(
-          "To'lov turi", ["Naqd", "Nasiya (Qarz)", "Perevod"]
+          "To'lov Turi:", ["Naqd", "Nasiya (Qarz)", "Perevod"]
       )
 
-      if tolov_turi == "Nasiya (Qarz)":
-        tolangan_summa = st.number_input(
-            "Hozir bergan puli (Avans) ($)",
-            min_value=0.0,
-            max_value=float(umumiy_narx),
-            value=0.0,
-            step=1.0,
-        )
-      else:
-        tolangan_summa = umumiy_narx
-
+      tolangan_summa = (
+          st.number_input(
+              "Hozir to'langan summa ($):",
+              min_value=0.0,
+              max_value=float(umumiy_narx),
+              value=0.0,
+          )
+          if tolov_turi == "Nasiya (Qarz)"
+          else umumiy_narx
+      )
       qarz_summasi = umumiy_narx - tolangan_summa
 
-      if st.button("🚀 Sotishni Tasdiqlash va IMEI larni biriktirish"):
-        if mijoz_ismi:
+      if st.button("🚀 Sotuvni Tasdiqlash", type="primary"):
+        if mijoz_ismi.strip():
           sana = datetime.now().strftime("%Y-%m-%d %H:%M")
-          bir_dona_foyda = sotuv_narx_dona - tannarx_val
-          umumiy_foyda = bir_dona_foyda * sotilgan_soni
 
           cursor.execute(
               """
-                    INSERT INTO sotuvlar (sana, partiya_id, model, mijoz_ismi, sotilgan_soni, sotuv_narx_dona, umumiy_narx, tolov_turi, tolangan_summa, qarz_summasi, umumiy_foyda)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO sotuvlar (sana, partiya_id, model, mijoz_ismi, sotilgan_soni, sotuv_narx_dona, cargo_dona, sotuv_perevod_foiz, umumiy_narx, tolov_turi, tolangan_summa, qarz_summasi, umumiy_foyda)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
               (
                   sana,
                   secilgan_partiya_id,
                   first_row["model"],
-                  mijoz_ismi,
+                  mijoz_ismi.strip(),
                   sotilgan_soni,
                   sotuv_narx_dona,
+                  cargo_dona,
+                  sotuv_perevod_foiz,
                   umumiy_narx,
                   tolov_turi,
                   tolangan_summa,
@@ -1059,210 +1019,285 @@ elif menu == "🛒 Sotuv Qilish (Dona / Optom)":
               ),
           )
 
-          for imei in tanlangan_imeilar:
+          for imei in selected_imeis:
             cursor.execute(
                 """
-                        UPDATE imei_baza 
-                        SET status = 'Sotilgan', mijoz_ismi = ?, sotuv_sana = ? 
-                        WHERE imei1 = ?
+                        UPDATE imei_baza SET status = 'Sotilgan', mijoz_ismi = ?, sotuv_sana = ? WHERE imei1 = ?
                     """,
-                (mijoz_ismi, sana, imei),
+                (mijoz_ismi.strip(), sana, imei),
             )
 
           conn.commit()
           st.balloons()
-          st.success(
-              f"✅ SOTUV MUVAFFAQIYATLI AMALGA OSHDI!\n\n• **Mijoz:**"
-              f" {mijoz_ismi}\n• **Sotilgan soni:** {sotilgan_soni} ta\n•"
-              f" **Qolgan qarz:** ${qarz_summasi:,.2f}"
+          st.toast(
+              f"✅ DONE! {sotilgan_soni} ta {first_row['model']}"
+              f" {mijoz_ismi.strip()}ga sotildi.",
+              icon="🛍️",
           )
           st.rerun()
         else:
           st.error("❌ Iltimos, mijoz ismini kiriting!")
 
-# --- 6. IMEI TEKSHIRISH VA SOTILGANLAR RO'YXATI ---
-elif menu == "🔍 IMEI Tekshirish va Sotilganlar Ro'yxati":
-  st.header("Qaytarib olib kelingan telefonni tekshirish va Sotilgan IMEI lar")
+# --- 8. IMEI VA IMEISIZ VOZVRAT BOSHGARISH ---
+elif menu == "🔍 IMEI va IMEIsiz Qaytarib Olish (Vozvrat)":
+  st.header("🔄 Qaytarib Olish (Vozvrat qilish)")
 
-  tab1, tab2 = st.tabs(
-      ["🔍 Bitta IMEI ni Qidirish", "📋 Partiya bo'yicha sotilgan IMEI lar"]
-  )
+  vozvrat_tab1, vozvrat_tab2 = st.tabs([
+      "1️⃣ IMEI bor telefonni qaytarish",
+      "2️⃣ IMEIsiz sotilgan telefonni qaytarish",
+  ])
 
-  with tab1:
+  with vozvrat_tab1:
     qidiruv_imei = st.text_input(
-        "Telefonning IMEI yoki IMEI2 raqamini kiriting:"
+        "IMEI raqamini kiriting:", key="vozvrat_imei_input"
     )
 
-    if qidiruv_imei:
+    if qidiruv_imei.strip():
       cursor.execute(
-          """
-                SELECT * FROM imei_baza 
-                WHERE imei1 LIKE ? OR imei2 LIKE ?
-            """,
-          (f"%{qidiruv_imei}%", f"%{qidiruv_imei}%"),
+          "SELECT * FROM imei_baza WHERE imei1 LIKE ? OR imei2 LIKE ?",
+          (f"%{qidiruv_imei.strip()}%", f"%{qidiruv_imei.strip()}%"),
       )
-      natija = cursor.fetchone()
-
-      if natija:
-        st.success("✅ Telefon bazadan topildi!")
-        st.write(f"• **Partiya ID:** {natija[1]}")
-        st.write(f"• **Model:** {natija[2]}")
-        st.write(f"• **IMEI 1:** {natija[3]}")
-        st.write(f"• **IMEI 2:** {natija[4]}")
-        st.write(f"• **Holati (Status):** {natija[5]}")
-        st.write(
-            f"• **Sotib olgan mijoz:** {natija[6] if natija[6] else 'Hali sotilmagan'}"
+      res = cursor.fetchone()
+      if res:
+        st.toast("✅ DONE! IMEI bazadan topildi.", icon="🔍")
+        st.info(
+            f"📱 **Model:** {res[2]} | **Status:** {res[5]} | **Mijoz:**"
+            f" {res[6] if res[6] else '-'}"
         )
-        st.write(f"• **Sotilgan sana:** {natija[7] if natija[7] else '-'}")
 
-        if natija[5] == "Sotilgan":
-          if st.button("Bu telefonni Qaytgan (Brak/Almashinuv) deb belgilash"):
+        if res[5] == "Sotilgan":
+          st.warning(
+              "⚠️ Ushbu telefon sotilgan. Omborga qaytarib olish uchun pastdagi"
+              " tugmani bosing:"
+          )
+
+          if st.button("🔄 TELEFONNI VOZVRAT QILISH", key="btn_imei_vozvrat"):
             cursor.execute(
-                "UPDATE imei_baza SET status = 'Qaytarilgan' WHERE id = ?",
-                (natija[0],),
+                "UPDATE imei_baza SET status = 'Omborda', mijoz_ismi = NULL,"
+                " sotuv_sana = NULL WHERE id = ?",
+                (res[0],),
             )
+
+            cursor.execute(
+                "SELECT id, sotilgan_soni, sotuv_narx_dona, umumiy_narx,"
+                " qarz_summasi, umumiy_foyda FROM sotuvlar WHERE model = ? AND"
+                " mijoz_ismi = ? ORDER BY id DESC LIMIT 1",
+                (res[2], res[6]),
+            )
+            sotuv_record = cursor.fetchone()
+
+            if sotuv_record:
+              s_id, s_soni, s_dona, s_umumiy, s_qarz, s_foyda = sotuv_record
+              if s_soni <= 1:
+                cursor.execute("DELETE FROM sotuvlar WHERE id = ?", (s_id,))
+              else:
+                bir_dona_foyda = s_foyda / s_soni
+                cursor.execute(
+                    """
+                                  UPDATE sotuvlar 
+                                  SET sotilgan_soni = sotilgan_soni - 1,
+                                      umumiy_narx = umumiy_narx - ?,
+                                      qarz_summasi = CASE WHEN qarz_summasi >= ? THEN qarz_summasi - ? ELSE 0 END,
+                                      umumiy_foyda = umumiy_foyda - ?
+                                  WHERE id = ?
+                              """,
+                    (s_dona, s_dona, s_dona, bir_dona_foyda, s_id),
+                )
+
             conn.commit()
-            st.warning(
-                "Telefon statusi 'Qaytarilgan' deb o'zgartirildi va omborga"
-                " qaytarildi."
-            )
+            st.balloons()
+            st.success("✅ DONE! Telefon omborga muvaffaqiyatli qaytarildi.")
             st.rerun()
       else:
-        st.error("❌ Bunday IMEI raqami bazadan topilmadi!")
+        st.error("❌ Ushbu IMEI topilmadi!")
 
-  with tab2:
-    df_partiyalar = pd.read_sql("SELECT * FROM partiyalar", conn)
-    if df_partiyalar.empty:
-      st.info("Hozircha partiyalar mavjud emas.")
+  with vozvrat_tab2:
+    st.subheader("📋 IMEIsiz Sotilgan Telefonni Qaytarib Olish")
+
+    df_sotuvlar_tab2 = pd.read_sql("SELECT * FROM sotuvlar", conn)
+
+    if df_sotuvlar_tab2.empty:
+      st.info("Hozircha savdolar tarixi bo'sh.")
     else:
-      partiya_sanoq = st.selectbox(
-          "Qaysi Partiya bo'yicha sotilgan IMEI larni ko'rmoqchisiz?",
-          ["Barcha partiyalar"] + df_partiyalar["id"].tolist(),
+      sotuv_dict2 = {}
+      for _, r in df_sotuvlar_tab2.iterrows():
+        lbl = (
+            f"Savdo ID: {r['id']} | Sana: {r['sana']} | Mijoz:"
+            f" {r['mijoz_ismi']} | Model: {r['model']} ({r['sotilgan_soni']} ta)"
+            f" | Jami: ${r['umumiy_narx']:,.2f}"
+        )
+        sotuv_dict2[lbl] = r["id"]
+
+      sel_sotuv_lbl2 = st.selectbox(
+          "Qaysi savdodagi telefon qaytarildi?",
+          list(sotuv_dict2.keys()),
+          key="sel_imeisiz_vozvrat",
+      )
+      sotuv_id_sel2 = sotuv_dict2[sel_sotuv_lbl2]
+
+      s_row2 = df_sotuvlar_tab2[df_sotuvlar_tab2["id"] == sotuv_id_sel2].iloc[0]
+
+      vozvrat_soni2 = st.number_input(
+          f"Necha dona telefon qaytarib olindi? (Ushbu savdoda maks:"
+          f" {s_row2['sotilgan_soni']} ta bor):",
+          min_value=1,
+          max_value=int(s_row2["sotilgan_soni"]),
+          value=1,
+          step=1,
+          key="num_imeisiz_vozvrat",
       )
 
-      if partiya_sanoq == "Barcha partiyalar":
-        df_sotilgan_imei = pd.read_sql(
-            "SELECT partiya_id, model, imei1, imei2, mijoz_ismi, sotuv_sana FROM imei_baza WHERE status = 'Sotilgan'",
-            conn,
-        )
-      else:
-        df_sotilgan_imei = pd.read_sql(
-            f"SELECT partiya_id, model, imei1, imei2, mijoz_ismi, sotuv_sana FROM imei_baza WHERE status = 'Sotilgan' AND partiya_id = {partiya_sanoq}",
-            conn,
-        )
+      if st.button(
+          "🔄 USHBU TELEFONNI OMBOBGA QAYTARISH (VOZVRAT)",
+          type="primary",
+          key="btn_imeisiz_vozvrat",
+      ):
+        partiya_id_v = s_row2["partiya_id"]
+        model_v = s_row2["model"]
+        s_dona_narx = s_row2["sotuv_narx_dona"]
 
-      if df_sotilgan_imei.empty:
-        st.info("Ushbu partiya bo'yicha hali sotilgan IMEI lar yo'q.")
-      else:
-        st.write(
-            f"Jami sotilgan telefonlar soni: **{len(df_sotilgan_imei)} ta**"
+        cursor.execute(
+            "SELECT id FROM imei_baza WHERE partiya_id = ? AND status ="
+            " 'Sotilgan' LIMIT ?",
+            (partiya_id_v, vozvrat_soni2),
         )
-        st.dataframe(df_sotilgan_imei)
+        sold_imeis = cursor.fetchall()
 
-# --- 7. NASIYALAR VA QARZ TO'LOVLARI ---
+        if sold_imeis:
+          for im_item in sold_imeis:
+            cursor.execute(
+                "UPDATE imei_baza SET status = 'Omborda', mijoz_ismi = NULL,"
+                " sotuv_sana = NULL WHERE id = ?",
+                (im_item[0],),
+            )
+        else:
+          for _ in range(vozvrat_soni2):
+            cursor.execute(
+                """
+                          INSERT INTO imei_baza (partiya_id, model, imei1, imei2, status)
+                          VALUES (?, ?, '⚠️ Qaytarilgan (IMEIsiz)', '', 'Omborda')
+                      """,
+                (partiya_id_v, model_v),
+            )
+
+        if s_row2["sotilgan_soni"] <= vozvrat_soni2:
+          cursor.execute("DELETE FROM sotuvlar WHERE id = ?", (sotuv_id_sel2,))
+        else:
+          bir_dona_foyda = s_row2["umumiy_foyda"] / s_row2["sotilgan_soni"]
+          kamayish_summasi = vozvrat_soni2 * s_dona_narx
+          kamayish_foyda = vozvrat_soni2 * bir_dona_foyda
+
+          cursor.execute(
+              """
+                      UPDATE sotuvlar 
+                      SET sotilgan_soni = sotilgan_soni - ?,
+                          umumiy_narx = umumiy_narx - ?,
+                          qarz_summasi = CASE WHEN qarz_summasi >= ? THEN qarz_summasi - ? ELSE 0 END,
+                          umumiy_foyda = umumiy_foyda - ?
+                      WHERE id = ?
+                  """,
+              (
+                  vozvrat_soni2,
+                  kamayish_summasi,
+                  kamayish_summasi,
+                  kamayish_summasi,
+                  kamayish_foyda,
+                  sotuv_id_sel2,
+              ),
+          )
+
+        conn.commit()
+        st.balloons()
+        st.toast(
+            f"✅ DONE! {vozvrat_soni2} ta {model_v} omborga qaytarildi.",
+            icon="🔄",
+        )
+        st.rerun()
+
+# --- 9. NASIYALAR VA QARZ TO'LOVLARI (UMUMIY KO'CHADAGI QARZLAR NAFIS METRIKALARI BILAN) ---
 elif menu == "👥 Nasiyalar va Qarz To'lovlari":
-  st.header("Mijozlar Qarzlari va Qarz Qabul Qilish")
+  st.header("👥 Nasiyalar va Qarz To'lovlari Nazorati")
 
-  df_qarz = pd.read_sql(
-      "SELECT * FROM sotuvlar WHERE qarz_summasi > 0", conn
+  df_qarz = pd.read_sql("SELECT * FROM sotuvlar WHERE qarz_summasi > 0", conn)
+  df_tolovlar = pd.read_sql("SELECT * FROM qarz_tolovlari", conn)
+
+  # ✨ KO'CHADAGI JAMI NASIYA VA STATISTIKANING METRIKASINI HISOBLASH
+  jami_kochada_qarz = df_qarz["qarz_summasi"].sum() if not df_qarz.empty else 0.0
+  qarzdor_mijozlar_soni = (
+      df_qarz["mijoz_ismi"].nunique() if not df_qarz.empty else 0
+  )
+  jami_undirilgan_qarz = (
+      df_tolovlar["tolangan_summa"].sum() if not df_tolovlar.empty else 0.0
   )
 
-  if df_qarz.empty:
-    st.info("Hozirda nasiyaga olingan savdolar yo'q. Hamma qarzi yo'q!")
-  else:
-    jami_qarz = df_qarz["qarz_summasi"].sum()
-    st.metric(
-        label="Umumiy Undirilmagan Qarzlar (Nasiya)",
-        value=f"${jami_qarz:,.2f}",
-    )
+  col_q1, col_q2, col_q3 = st.columns(3)
+  col_q1.metric("⚠️ Jami Ko'chadagi Qarz (Nasiya)", f"${jami_kochada_qarz:,.2f}")
+  col_q2.metric("👥 Qarzdor Mijozlar Soni", f"{qarzdor_mijozlar_soni} ta")
+  col_q3.metric("✅ Undirilgan (Yopilgan) Qarzlar", f"${jami_undirilgan_qarz:,.2f}")
 
-    st.markdown("### 📋 Qarzdor Mijozlar Ro'yxati:")
-    st.dataframe(
-        df_qarz[[
-            "id",
-            "sana",
-            "mijoz_ismi",
-            "model",
-            "sotilgan_soni",
-            "umumiy_narx",
-            "tolangan_summa",
-            "qarz_summasi",
-        ]]
-    )
+  st.markdown("---")
+
+  if df_qarz.empty:
+    st.success("🎉 Ajoyib! Hozirda ko'chada qarzdorlar va nasiyalar yo'q.")
+  else:
+    st.subheader("📋 Qarzdorlar Ro'yxati")
+    st.dataframe(df_qarz, use_container_width=True)
 
     st.markdown("---")
-    st.markdown("### 💵 Qarz To'lovini Qabul Qilish")
+    st.subheader("💵 Qarz To'lovini Qabul Qilish")
 
-    qarz_sotuv_id = st.selectbox(
-        "Qarz berayotgan mijozning Savdo ID raqamini tanlang",
-        df_qarz["id"].tolist(),
+    qarz_options = {}
+    for _, r in df_qarz.iterrows():
+      label = (
+          f"Savdo ID: {r['id']} — Mijoz: {r['mijoz_ismi']} | Model:"
+          f" {r['model']} | Qarz: ${r['qarz_summasi']:,.2f}"
+      )
+      qarz_options[label] = r["id"]
+
+    selected_qarz_label = st.selectbox(
+        "Qarzini to'layotgan mijozni tanlang:", list(qarz_options.keys())
     )
+    qarz_id = qarz_options[selected_qarz_label]
 
-    tanlangan_qarz = df_qarz[df_qarz["id"] == qarz_sotuv_id].iloc[0]
-    qolgan_qarz = tanlangan_qarz["qarz_summasi"]
-
-    st.info(
-        f"Mijoz: {tanlangan_qarz['mijoz_ismi']} - Model: {tanlangan_qarz['model']} - Hozirgi qolgan qarzi: ${qolgan_qarz:,.2f}"
-    )
+    q_row = df_qarz[df_qarz["id"] == qarz_id].iloc[0]
 
     yangi_tolov = st.number_input(
-        "To'lanayotgan summa ($)",
+        "To'lanayotgan summa ($):",
         min_value=0.1,
-        max_value=float(qolgan_qarz),
-        step=10.0,
+        max_value=float(q_row["qarz_summasi"]),
     )
 
-    if st.button("Qarz To'lovini Tasdiqlash"):
-      sana_bugun = datetime.now().strftime("%Y-%m-%d %H:%M")
-      yangi_qolgan_qarz = qolgan_qarz - yangi_tolov
-      yangi_tolangan_summa = tanlangan_qarz["tolangan_summa"] + yangi_tolov
+    if st.button("💵 Qarz To'lovini Tasdiqlash", type="primary"):
+      sana_b = datetime.now().strftime("%Y-%m-%d %H:%M")
+      qolgan = q_row["qarz_summasi"] - yangi_tolov
+      tolangan = q_row["tolangan_summa"] + yangi_tolov
 
       cursor.execute(
           "UPDATE sotuvlar SET qarz_summasi = ?, tolangan_summa = ? WHERE id = ?",
-          (yangi_qolgan_qarz, yangi_tolangan_summa, qarz_sotuv_id),
+          (qolgan, tolangan, qarz_id),
       )
-
       cursor.execute(
           """
             INSERT INTO qarz_tolovlari (sana, sotuv_id, mijoz_ismi, tolangan_summa, qolgan_qarz)
             VALUES (?, ?, ?, ?, ?)
         """,
-          (
-              sana_bugun,
-              qarz_sotuv_id,
-              tanlangan_qarz["mijoz_ismi"],
-              yangi_tolov,
-              yangi_qolgan_qarz,
-          ),
+          (sana_b, qarz_id, q_row["mijoz_ismi"], yangi_tolov, qolgan),
       )
       conn.commit()
-
-      st.balloons()
-      st.success(
-          f"✅ TO'LOV MUVAFFAQIYATLI QABUL QILINDI! Mijoz: {tanlangan_qarz['mijoz_ismi']} - Bergan puli: ${yangi_tolov:,.2f} - Qolgan qarz:${yangi_qolgan_qarz:,.2f}"
-      )
+      st.toast(f"✅ DONE! ${yangi_tolov:,.2f} qarz to'lovi qabul qilindi.", icon="💵")
       st.rerun()
 
-  st.markdown("---")
-  st.markdown("### 📜 Qarz To'lovlari Tarixi")
-  df_tolovlar = pd.read_sql("SELECT * FROM qarz_tolovlari", conn)
-  if not df_tolovlar.empty:
-    st.dataframe(df_tolovlar)
+    if not df_tolovlar.empty:
+      st.markdown("---")
+      st.subheader("📜 Qarz To'lovlari Tarixi")
+      st.dataframe(df_tolovlar, use_container_width=True)
 
-# --- 8. SAVDO TARIXI VA FOYDA ---
-elif menu == "📊 Savdo Tarixi va Foyda":
-  st.header("Barcha Sotuvlar va Sof Foyda Hisoboti")
-
+# --- 10. SAVDO TARIXI VA HISOBOT ---
+elif menu == "📜 Savdo Tarixi va Hisobot":
+  st.header("📜 Savdolar Tarixi")
   df_sotuvlar = pd.read_sql("SELECT * FROM sotuvlar", conn)
 
   if df_sotuvlar.empty:
-    st.info("Hozircha sotuvlar amalga oshirilmagan.")
+    st.info("Hozircha savdolar amalga oshirilmagan.")
   else:
-    jami_sof_foyda = df_sotuvlar["umumiy_foyda"].sum()
-    st.metric(
-        label="Umumiy Sof Foyda (Barcha savdolardan)",
-        value=f"${jami_sof_foyda:,.2f}",
-    )
-
-    st.markdown("### Amalga oshirilgan barcha savdolar:")
-    st.dataframe(df_sotuvlar)
+    st.dataframe(df_sotuvlar, use_container_width=True)
