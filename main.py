@@ -57,7 +57,7 @@ st.markdown(
 )
 
 # --- 🔒 LOGIN TIZIMI ---
-USERS = {"admin": "12345", "azizbek": "7777"}
+USERS = {"Abbos": "111", "azizbek": "7777"}
 
 if "logged_in" not in st.session_state:
   st.session_state.logged_in = False
